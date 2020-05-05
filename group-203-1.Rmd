@@ -1,0 +1,567 @@
+---
+title: "Analysis of Toronto Break and Enter Crime Data in 2019"
+author: "Feifei Li, Abdulrahman Alzaabi, Stuti Sekhri, Yan Mezhiborsky, TUT0203, 203-1"
+subtitle: "B&E Crimes and Geographical Factors"
+date: March 30, 2020
+output: 
+  beamer_presentation:
+    theme: "CambridgeUS"
+    colortheme: "beaver"
+    fonttheme: "structurebold"
+    slide_level: 2
+---
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+###################################### WARNING ! #########################################
+# Please uncomment the following line of code if you don't have these R packages installed.
+# installed.packages(c("knitr", "plot3D", "ggmap", "gridExtra"))
+##########################################################################################
+library("tidyverse")
+library("knitr")
+library("plot3D")
+library("gridExtra")
+library("ggmap") # Google Maps package
+# This API is for this project use only
+register_google("AIzaSyArD0JaZdeg2ZMfrNjQSzTs57pryh_gHDk")
+# DO NOT use it for other purposes
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Load the TPS break in data
+break_and_enters <- read_csv("break_and_enters.csv")
+p_values <- read_csv("p_values.csv")
+cl95_coordinate <- read_csv("cl95_coordinate.csv")
+neighbourhood_profiles_2016_csv <- read_csv("neighbourhood-profiles-2016-csv.csv")
+```
+
+# Introduction and Methods
+
+## Introduction
+
+Occurrences of B&E crimes in Toronto during 2019 are normally distributed for spatial variables such as longtitude, and latitude.
+Unusual frequencies of B&E crimes for some neighbourhoods were also observed.
+We attempt to find the correlations between the occurrences of B&E crimes
+and the abovementioned geographical variables.
+
+## Objectives
+
+- Determine the correlation between B&E crime occurrence and geographical factors
+    - Longitude
+    - Latitude
+    - Neighbourhood
+        - And underlying variables in neighbourhoods such as:
+        - Premise types
+        - Population
+- Estimate the location where B&E crimes occur most frequently
+- Provide directions for future Toronto B&E crime analyses
+- Provide advice for B&E crime prevention in Toronto
+
+## Data Summary (Longitude and Latitude)
+
+:::::::::::::: {.columns}
+::: {.column}
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE, fig.width=15, fig.height=18}
+ggmap(get_map(location = 'Toronto', zoom = 11)) +
+  labs(x = "Longitude",
+       y = "Latitude",
+       caption = "Figure 1. A heat map presenting the intensity of recorded
+       B&E crimes committed in 2019 across Toronto.") +
+  theme_classic(base_size = 45) +
+  theme(
+    plot.caption = element_text(hjust = 0.5)
+  ) +
+  stat_density2d(data = break_and_enters,
+                 aes(
+                   x = Long,
+                   y = Lat,
+                   alpha= ..level..,
+                   fill= ..level..
+                 ),
+                 colour = FALSE,
+                 geom = "polygon",
+                 bins = 100) + 
+  scale_fill_gradientn(
+    colours = c(rev(rainbow(100, start=0, end=.7)))
+  ) +
+  scale_alpha(range = c(0,.8)) + 
+  guides(alpha = FALSE, fill = FALSE)
+```
+:::
+::: {.column}
+```{r echo=FALSE, fig.height=20, fig.width=15, message=FALSE, warning=FALSE, paged.print=TRUE}
+# Get 3D visualization of the B&E distribution over the coordinates
+long_cut <- cut(break_and_enters$Long, 20)
+lat_cut <- cut(break_and_enters$Lat, 20)
+hist3D(z = table(long_cut, lat_cut),
+       bty = "g",
+       phi = 10,
+       theta = -60,
+       xlab = "Longitude",
+       ylab = "Latitude",
+       zlab = "B&E Crimes",
+       main = "Figure2. B&E crimes distribution
+       across Toronto based on the coordinates of occurrences",
+       border = "black",
+       shade = 0.8,
+       space = 0.15,
+       d = 5,
+       cex.axis = 1,
+       cex.main = 3,
+       cex.lab = 3
+)
+```
+:::
+::::::::::::::
+
+## Data Summary (Neighbourhood)
+
+```{r echo=FALSE, fig.height=12, fig.width=20, message=FALSE, warning=FALSE}
+# Get the distribution of B&E occurrences over neighbourhoods
+break_and_enters %>%
+  ggplot(aes(x = Neighbourhood)) +
+  geom_bar(aes(fill = offence)) +
+  labs(x = "Longitude",
+       y = "Latitude",
+       caption = "Figure 3. The distribution of B&E crimes in each neighbourhood of Toronto.") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        plot.caption = element_text(hjust = 0.5)
+        )
+```
+
+## Statistical Methods
+
+- Hypothesis testing for finding statistical evidence
+that B&E crimes are more inclined to take place in
+some neighbourhoods and less in some others.
+    - Null hypothesis:
+  All 140 neighbourhoods have the same probability of B&E crime occurrence
+  i.e. $H_0 = 1/140$
+
+- Bootstrapped the mode of coordinate data
+to estimate the location where B&E crimes are committed
+most frequently.
+
+- Linear regression model to determine correlations
+between numbers of each premise type and occurrences of B&E crimes in neighbourhoods.
+
+- Linear regression model to determine correlations
+between population and occurrences of B&E crimes in neighbourhoods.
+    - Data source: 2016 Census of Population data from Statistics Canada
+
+# Results
+
+## Hypothesis Testing
+
+```{r eval=FALSE, include=FALSE}
+# The following code is used to run simulations for the hypothesis test
+# It will cost around an hour to run
+# We use the csv data file generated from it to produce the plots
+# Rather than run the simulation every time we recompile the Rmd.
+
+# Simulation of the hypothesis test for all neighbourhoods
+
+p_values <- data.frame(
+  Neighbourhood = character(),
+  p_value = double(),
+  stringsAsFactors=FALSE
+)
+
+n_observations <- nrow(break_and_enters)
+# Total number of B&E crimes committed in Toronto 2019
+repetition <- 3000
+# Rounds of simulations for each neighbourhood
+H_0 <- 1/nrow(prop_neighbourhood)
+# Null hypothesis:
+# Every neighbourhood has the same probability of B&E crimes committed
+
+for (neighbourhood in prop_neighbourhood$Neighbourhood) {
+  simulated_stats <- rep(NA, repetition) # Empty vector for simulated data storage
+  for (i in 1:repetition) {
+    new_sim <- sample(
+      prop_neighbourhood$Neighbourhood,
+      size = n_observations,
+      replace = TRUE
+    )
+    sim_p <- sum(
+      new_sim == neighbourhood
+    ) / n_observations
+    simulated_stats[i] <- sim_p
+  }
+  sim <- tibble(null_prob = simulated_stats)
+  
+  test_stat <- prop_neighbourhood[
+    which(
+      prop_neighbourhood$Neighbourhood == neighbourhood
+      ),
+    ]$Prop
+  
+  pvalue <- sim %>%
+    filter(
+      abs(null_prob - H_0) >= abs(test_stat - H_0)
+    ) %>%
+    summarise(p_value = n() / repetition)
+  new_row <- data.frame(
+    Neighbourhood = neighbourhood,
+    p_value = as.numeric(pvalue),
+    stringsAsFactors = FALSE
+  )
+  p_values <- rbind(p_values, new_row)
+}
+
+write.csv(p_values, file = "p_values.csv", row.names = FALSE)
+```
+
+```{r echo=FALSE, fig.height=12, fig.width=20, message=FALSE, warning=FALSE}
+# Load the csv file to produce a plot
+p_values %>%
+  ggplot(aes(
+    x = Neighbourhood,
+    y = p_value,
+    label = p_value)
+    ) + 
+  geom_point(stat='identity', fill="black", size=6) +
+  geom_segment(aes(y = 0,
+                   x = Neighbourhood,
+                   yend = p_value,
+                   xend = Neighbourhood),
+               color = "black") +
+  geom_text(color="white", size=2) +
+  labs(title="P-values for 140 neighbourhoods in Toronto", 
+       subtitle="Assuming every neighbourhood has the same probability of B&E crime occurrence") + 
+  ylim(-1, 1) +
+  coord_flip() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()
+  )
+```
+
+## Hypothesis Testing
+
+- 108 of the 140 neighbourhoods have p-values of **0**, and
+6 of the neighbourhoods have p-values not equal to 0 but less than 0.01.
+    - This means that,
+  if *the B&E crime rate in every neighbourhood is the same*,
+  then, for 108 of the neighbourhoods, the probability of observing data
+  that *is at least as unusual as the reported B&E crime rates* in those
+  neighbourhoods, is **0%**, and for 6 of the neighbourhoods,
+  the probability of observing data
+  that *is at least as unusual as the reported B&E crime rates* in those
+  neighbourhoods, is *less than 1%*
+- Only 14 of the 140 neighbourhoods have p-values greater than 0.1
+    - We have no evidence against the hypothesis that
+  every neighbourhood has the same B&E crime rates
+  for only $\frac{1}{10}$ of the neighbourhoods.
+
+
+## Bootstrapping
+
+```{r eval=FALSE, include=FALSE}
+
+# Another piece of code that runs half an hour
+# Unless you really want to run the simulation yourself
+# The plot is based on the output csv
+boot_modes <- rep(NA, 2000)
+for (i in 1:2000){
+  boot_samp <- break_and_enters %>%
+    sample_n(
+      size = nrow(break_and_enters),
+      replace = TRUE
+    )
+  
+  boot_modes[i] <- as.double(names(sort(-table(boot_samp$Long)))[1])
+}
+boot_modes <- tibble(modeLong = boot_modes)
+
+cl95_Long <- quantile(boot_modes$modeLong, c(0.025, 0.975))
+
+boot_modes <- rep(NA, 2000)
+for (i in 1:2000){
+  boot_samp <- break_and_enters %>%
+    sample_n(
+      size = nrow(break_and_enters),
+      replace = TRUE
+    )
+  
+  boot_modes[i] <- as.double(names(sort(-table(boot_samp$Lat)))[1])
+}
+boot_modes <- tibble(modeLat = boot_modes)
+
+cl95_Lat <- quantile(boot_modes$modeLat, c(0.025, 0.975))
+
+cl95_coordinate <- tibble(
+  coordinate = c("Longitude", "Latitude"),
+  "2.5%" = c(cl95_Long[1], cl95_Lat[1]),
+  "97.5%" = c(cl95_Long[2], cl95_Lat[2])
+)
+write.csv(cl95_coordinate, file = "cl95_coordinate.csv",row.names=FALSE)
+```
+
+- An estimate for the location where B&E crimes occur most frequently in Toronto
+- We are **95%** confident that the most frequent B&E crimes occurring location
+across Toronto in 2019 is in the area enclosed by the longitude between
+-79.3962 and -79.1862, and the latitude between 43.6533 and 43.7795.
+
+\vspace{0.8cm}
+
+```{r echo=FALSE, paged.print=TRUE}
+options(pillar.sigfig = 22)
+kable(cl95_coordinate,
+      caption = "95% confidence intervals for longitudes and latitudes of the most frequent B&E crime occurrence")
+```
+
+## Linear Regression (Premise Type)
+
+```{r echo=FALSE, fig.height=12, fig.width=20, message=FALSE, warning=FALSE}
+# Creating sub tables for the number of each type of premises in each neighbourhood
+neighbourhood_house <- break_and_enters %>%
+  filter(premisetype == "House") %>%
+  group_by(Neighbourhood) %>%
+  summarise(
+    House = n()
+  )
+
+neighbourhood_apt <- break_and_enters %>%
+  filter(premisetype == "Apartment") %>%
+  group_by(Neighbourhood) %>%
+  summarise(
+    Apartment = n()
+  )
+
+neighbourhood_other <- break_and_enters %>%
+  filter(premisetype == "Other") %>%
+  group_by(Neighbourhood) %>%
+  summarise(
+    Other = n()
+  )
+
+neighbourhood_com <- break_and_enters %>%
+  filter(premisetype == "Commercial") %>%
+  group_by(Neighbourhood) %>%
+  summarise(
+    Commercial = n()
+  )
+
+# Table with number of B&E crimes in each neighbourhood
+neighbourhood_be_count <- break_and_enters %>%
+  group_by(Neighbourhood) %>%
+  summarise(Occurrences = n())
+
+# Combine the small tables to make the main table
+neighbourhood_be_vs_type <- merge(
+  x = neighbourhood_be_count,
+  y = (
+    merge(
+      x = neighbourhood_house,
+      y = (
+        merge(
+          x = neighbourhood_apt,
+          y = (
+            merge(
+              x = neighbourhood_com,
+              y = neighbourhood_other,
+              by.x = 'Neighbourhood',
+              by.y = 'Neighbourhood'
+            )
+          ),
+          by.x = 'Neighbourhood',
+          by.y = 'Neighbourhood'
+        )
+      ),
+      by.x = 'Neighbourhood',
+      by.y = 'Neighbourhood'
+    )
+  ),
+  by.x = 'Neighbourhood',
+  by.y = 'Neighbourhood'
+)
+
+# Scatter plots for each premise type
+be_vs_house <- neighbourhood_be_vs_type %>%
+  ggplot(aes(x = House, y = Occurrences)) +
+  geom_point() +
+  geom_smooth(
+    alpha = 0.2,
+    method = lm
+  )
+
+be_vs_apt <- neighbourhood_be_vs_type %>%
+  ggplot(aes(x = Apartment, y = Occurrences)) +
+  geom_point() +
+  geom_smooth(
+    alpha = 0.2,
+    method = lm
+  )
+
+be_vs_com <- neighbourhood_be_vs_type %>%
+  ggplot(aes(x = Commercial, y = Occurrences)) +
+  geom_point() +
+  geom_smooth(
+    alpha = 0.2,
+    method = lm
+  )
+
+be_vs_other <- neighbourhood_be_vs_type %>%
+  ggplot(aes(x = Other, y = Occurrences)) +
+  geom_point() +
+  geom_smooth(
+    alpha = 0.2,
+    method = lm
+  )
+
+# Combine the 4 scatter plots into 1
+grid.arrange(
+  grobs = list(
+    be_vs_house,
+    be_vs_apt,
+    be_vs_com,
+    be_vs_other
+  ),
+  cols = 2
+)
+```
+
+## Linear Regression (Premise Type)
+
+```{r include=FALSE}
+# Building linear regression model for each premise type
+model_house <-
+  lm(
+    Occurrences ~ House,
+    data = neighbourhood_be_vs_type
+  )
+
+model_apt <-
+  lm(
+    Occurrences ~ Apartment,
+    data = neighbourhood_be_vs_type
+  )
+
+model_com <-
+  lm(
+    Occurrences ~ Commercial,
+    data = neighbourhood_be_vs_type
+  )
+
+model_other <-
+  lm(
+    Occurrences ~ Other,
+    data = neighbourhood_be_vs_type
+  )
+```
+
+\tiny
+```{r echo=FALSE}
+kable(summary(model_house)$coefficients,
+      "latex",
+      caption = "Linear Regression Coefficients for House",
+      booktabs = T,
+      align = "c")
+
+kable(summary(model_apt)$coefficients,
+      "latex",
+      caption = "Linear Regression Coefficients for Apartment",
+      booktabs = T,
+      align = "c")
+```
+
+### Positive correlation between the number of apartments in a neighbourhood and the occurrences of B&E crimes.
+- p value for the t-test (Pr(>|t|)) being 0 tells us we have strong evidence against the null hypothesis that there is no correlation between the number of apartments in a neighbourhood and occurrences B&E crimes
+- We are also seeing a postive correlation between the number of houses in a neighbourhood and occurrences B&E crimes. However the estimate of the slope is not as positive as that of the linear regression for the number of apartments in a neighbourhoods.
+- Hence, a weaker correlation for the premise type of houses.
+
+## Linear Regression (Premise Type)
+
+\tiny
+```{r echo=FALSE}
+kable(summary(model_com)$coefficients,
+      "latex",
+      caption = "Linear Regression Coefficients for Commercial Premises",
+      booktabs = T,
+      align = "c")
+
+kable(summary(model_other)$coefficients,
+      "latex",
+      caption = "Linear Regression Coefficients for Other Premises",
+      booktabs = T,
+      align = "c")
+```
+### Positive correlation for both the numbers of commercial premises and other premises in a neighbourhood.
+- Since both of their p-values are 0, and their estimates of the slope parameters for their simple linear regression models are positive, we have strong evidence against the null hypothesis that there is no correlations between the numbers of these two premise types and occurrences of B&E crimes.
+- Strong correlation for other premise types.
+
+## Linear Regression (Population)
+```{r include=FALSE}
+# Population dataset
+neighbourhood_population <- tibble(
+  Neighbourhood = colnames(neighbourhood_profiles_2016_csv[,-(1:6)]),
+  Population = as.numeric(
+    gsub(",", "",
+         unname(unlist(
+           neighbourhood_profiles_2016_csv[3,-(1:6)]))
+    )
+  )
+)
+neighbourhood_population[1] <- lapply(neighbourhood_population[1], as.character)
+
+neighbourhood_be_count <- break_and_enters %>%
+  group_by(Neighbourhood) %>%
+  summarise(Occurrences = n())
+
+neighbourhood_be_count$Neighbourhood <-
+  gsub('[[:digit:]]+', '', neighbourhood_be_count$Neighbourhood)
+
+neighbourhood_be_count$Neighbourhood <-
+  gsub('\\ \\(\\)', '', neighbourhood_be_count$Neighbourhood)
+
+neighbourhood_be_vs_pop <-
+  merge(x = neighbourhood_be_count,
+        y = neighbourhood_population,
+        by.x = 'Neighbourhood',
+        by.y = 'Neighbourhood')
+model_pop <- lm(
+  Occurrences ~ Population,
+  data = neighbourhood_be_vs_pop
+)
+```
+:::::::::::::: {.columns}
+::: {.column}
+```{r echo=FALSE, fig.width=10, message=FALSE, warning=FALSE}
+neighbourhood_be_vs_pop %>%
+  ggplot(
+    aes(
+      x = Population,
+      y = Occurrences
+    )
+  ) +
+  geom_point() +
+  geom_smooth(
+    alpha = 0.2,
+    method = lm
+  )
+```
+:::
+::: {.column}
+- Very weak positive correlation between population of a neighbourhood and occurrences of B&E crimes
+- High $P_{intercept}$ value
+- It's OK since it makes no sense to observe that 13 B&E crimes occurr in a neighbourhood of zero population
+:::
+::::::::::::::
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+kable(summary(model_pop)$coefficients,
+      caption = "Linear Regression Coefficients for Population of 137 Neighbourhoods"
+      )
+```
+
+## Conclusion
+
+- According to our results, we are 95% confident that the most frequent B&E crimes occurring across Toronto in 2019 is in the area enclosed by the longitude between -79.3962 and -79.1862, and the latitude between 43.6533 and 43.7795. Perhaps the TPS should focus on this area for future B&E crime research.
+
+- We found strong correlations between the number of apartments and commmercial buildings in a neighbourhood, and the number of B&E crimes
+    - For these property managers, installing more cameras inside these buildings could be a plausible measure for preventing B&E crimes from occurring.
+
+
